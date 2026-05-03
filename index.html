@@ -1,21 +1,847 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>Seoul Pomodoro</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seoul Subway Pomodoro</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+  :root {
+    --brown-dark: #3d2b1f;
+    --brown-mid: #6b4226;
+    --brown-light: #a0673a;
+    --cream: #f5e6c8;
+    --seat-orange: #c47c2b;
+    --metal: #8a9a7b;
+    --metal-dark: #5a6b4e;
+    --sky-dawn: #f4a460;
+    --sky-day: #87ceeb;
+    --han-river: #4a7fa5;
+    --han-light: #6aafd4;
+    --green-hill: #5d8a3c;
+    --green-dark: #3d6127;
+    --building-gray: #8b9ea8;
+    --building-dark: #5a7080;
+    --window-frame: #4a3728;
+    --pixel-red: #e74c3c;
+    --pixel-yellow: #f1c40f;
+    --pixel-green: #2ecc71;
+    --line2-green: #00a84d;
+    --text-dim: #7a6a5a;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--brown-dark);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Press Start 2P', monospace;
+    image-rendering: pixelated;
+    overflow: hidden;
+  }
+
+  /* ── OUTER SHELL (subway car interior) ── */
+  #app {
+    width: 820px;
+    max-width: 99vw;
+    background: var(--brown-mid);
+    border: 4px solid var(--brown-dark);
+    box-shadow: 0 0 0 6px var(--brown-light), 0 8px 40px rgba(0,0,0,.7);
+    border-radius: 8px;
+    padding: 10px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* ── TOP STRIP (tiny controls) ── */
+  #top-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 5px;
+    color: var(--cream);
+    flex-wrap: wrap;
+  }
+  #top-strip select, #top-strip input {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 5px;
+    background: var(--brown-dark);
+    color: var(--cream);
+    border: 1px solid var(--brown-light);
+    padding: 2px 4px;
+    image-rendering: pixelated;
+  }
+  .tiny-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 5px;
+    background: var(--metal-dark);
+    color: var(--cream);
+    border: 1px solid var(--metal);
+    padding: 3px 5px;
+    cursor: pointer;
+  }
+  .tiny-btn:hover { background: var(--metal); }
+  .tiny-btn.active { background: var(--pixel-green); color: #000; }
+  #sound-btn.on { background: var(--pixel-green); color: #000; }
+  #label { margin-left: auto; color: var(--text-dim); }
+
+  /* ── BIG WINDOW (MAIN VIEW) ── */
+  #window-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: var(--window-frame);
+    border: 5px solid var(--window-frame);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: inset 0 0 0 3px var(--brown-dark);
+  }
+
+  /* pixel canvas fills entire window */
+  #scene-canvas {
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    display: block;
+  }
+
+  /* overlay: clock + station name on top of scene */
+  #window-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 10px;
+    gap: 4px;
+  }
+
+  #clock-display {
+    font-size: clamp(20px, 4vw, 36px);
+    color: var(--pixel-yellow);
+    text-shadow: 0 0 8px rgba(241,196,15,.8), 2px 2px 0 var(--brown-dark);
+    letter-spacing: 4px;
+    background: rgba(30,15,5,.55);
+    padding: 6px 14px;
+    border: 2px solid var(--pixel-yellow);
+  }
+
+  #station-display {
+    font-size: 6px;
+    color: var(--cream);
+    background: rgba(30,15,5,.7);
+    padding: 3px 8px;
+    border: 1px solid var(--metal);
+    letter-spacing: 1px;
+    text-align: center;
+  }
+  #station-display.flash { animation: stationFlash .4s step-end infinite; }
+  @keyframes stationFlash {
+    0%,100% { background: rgba(231,76,60,.8); color: #fff; }
+    50% { background: rgba(30,15,5,.7); color: var(--cream); }
+  }
+
+  /* character on seat */
+  #char-canvas {
+    position: absolute;
+    bottom: 0;
+    right: 24px;
+    width: 48px;
+    height: 80px;
+    image-rendering: pixelated;
+  }
+
+  /* ── PROGRESS RAIL ── */
+  #rail-wrap {
+    width: 100%;
+    position: relative;
+    height: 18px;
+    background: var(--brown-dark);
+    border: 1px solid var(--brown-light);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+  }
+  #rail-track {
+    width: 100%;
+    height: 3px;
+    background: var(--metal-dark);
+    position: relative;
+  }
+  #rail-progress {
+    height: 3px;
+    background: var(--line2-green);
+    width: 0%;
+    transition: width .5s linear;
+  }
+  #train-icon {
+    position: absolute;
+    top: -5px;
+    font-size: 10px;
+    left: 0%;
+    transform: translateX(-50%);
+    transition: left .5s linear;
+    filter: drop-shadow(1px 1px 0 #000);
+  }
+
+  /* ── BOTTOM STRIP (tiny) ── */
+  #bottom-strip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 5px;
+    color: var(--text-dim);
+  }
+  .mode-btn {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 5px;
+    padding: 3px 6px;
+    background: var(--brown-dark);
+    color: var(--cream);
+    border: 1px solid var(--metal-dark);
+    cursor: pointer;
+  }
+  .mode-btn.sel { background: var(--line2-green); color: #000; border-color: var(--pixel-green); }
+
+  /* ── MODAL ── */
+  #modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.75);
+    z-index: 99;
+    align-items: center;
+    justify-content: center;
+  }
+  #modal-overlay.open { display: flex; }
+  #modal-box {
+    background: var(--brown-mid);
+    border: 4px solid var(--brown-light);
+    padding: 20px;
+    max-width: 340px;
+    width: 90%;
+    font-size: 6px;
+    color: var(--cream);
+    box-shadow: 0 0 0 4px var(--brown-dark);
+  }
+  #modal-box h2 { font-size: 8px; color: var(--pixel-yellow); margin-bottom: 12px; }
+  .modal-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0; border-bottom: 1px solid var(--brown-dark);
+    color: var(--text-dim);
+  }
+  .modal-item .flag { font-size: 14px; }
+  .modal-item .price { margin-left: auto; color: var(--pixel-yellow); }
+  .modal-close {
+    font-family: 'Press Start 2P', monospace;
+    font-size: 6px; margin-top: 14px;
+    background: var(--pixel-red); color: #fff;
+    border: none; padding: 5px 10px; cursor: pointer;
+    display: block; width: 100%;
+  }
+</style>
 </head>
 <body>
-    <div class="overlay"></div>
-    <!-- 배경 영상이나 이미지를 넣을 공간 (서울 풍경용) -->
-    <div class="container">
-        <h1>뽀모도로 타이머</h1>
-        <div id="timer">25:00</div>
-        <div class="buttons">
-            <button id="start">시작</button>
-            <button id="reset">초기화</button>
-        </div>
+
+<div id="app">
+
+  <!-- TOP STRIP -->
+  <div id="top-strip">
+    <span>LINE</span>
+    <select id="line-sel">
+      <option value="2">2호선</option>
+      <option value="1">1호선</option>
+      <option value="9">9호선</option>
+    </select>
+    <span>START</span>
+    <select id="station-sel"></select>
+    <button class="tiny-btn" id="start-btn">▶ START</button>
+    <button class="tiny-btn" id="pause-btn">⏸ PAUSE</button>
+    <button class="tiny-btn" id="reset-btn">↺ RESET</button>
+    <button class="tiny-btn" id="sound-btn">🔊</button>
+    <button class="tiny-btn" id="shop-btn">★ CHARS</button>
+    <span id="label">POMODORO</span>
+    <select id="mode-time" style="margin-left:4px">
+      <option value="25">25 min</option>
+      <option value="50">50 min</option>
+      <option value="0">∞ UP</option>
+    </select>
+    <select id="char-sel">
+      <option value="f">♀ Female</option>
+      <option value="m">♂ Male</option>
+    </select>
+  </div>
+
+  <!-- BIG WINDOW -->
+  <div id="window-wrap">
+    <canvas id="scene-canvas"></canvas>
+    <canvas id="char-canvas"></canvas>
+    <div id="window-overlay">
+      <div id="clock-display">25:00</div>
+      <div id="station-display">🚇 홍대입구 (Hongik Univ.)</div>
     </div>
-    <script src="script.js"></script>
+  </div>
+
+  <!-- PROGRESS RAIL -->
+  <div id="rail-wrap">
+    <div id="rail-track">
+      <div id="rail-progress"></div>
+      <div id="train-icon">🚃</div>
+    </div>
+  </div>
+
+  <!-- BOTTOM STRIP -->
+  <div id="bottom-strip">
+    <span>MODE:</span>
+    <button class="mode-btn sel" id="btn-pomo">POMODORO</button>
+    <button class="mode-btn" id="btn-up">COUNT UP</button>
+    <span style="margin-left:10px; color:var(--text-dim)">© Seoul Subway Pomo</span>
+  </div>
+
+</div>
+
+<!-- SHOP MODAL -->
+<div id="modal-overlay">
+  <div id="modal-box">
+    <h2>★ SPECIAL CHARACTERS</h2>
+    <div class="modal-item"><span class="flag">🇫🇷</span><span>Paris Metro — Marinette</span><span class="price">$2.99</span></div>
+    <div class="modal-item"><span class="flag">🇺🇸</span><span>NYC Subway — Brooklyn Kid</span><span class="price">$2.99</span></div>
+    <div class="modal-item"><span class="flag">🇯🇵</span><span>Tokyo Metro — Akihabara Fan</span><span class="price">$1.99</span></div>
+    <div class="modal-item"><span class="flag">🇬🇧</span><span>London Tube — Tea Enjoyer</span><span class="price">$1.99</span></div>
+    <div class="modal-item"><span class="flag">🐱</span><span>Secret Neko Commuter</span><span class="price">$0.99</span></div>
+    <button class="modal-close" id="modal-close-btn">[ CLOSE ]</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════
+const LINES = {
+  2: [
+    { ko:'시청', en:'City Hall' }, { ko:'을지로입구', en:'Euljiro 1(il)-ga' },
+    { ko:'을지로3가', en:'Euljiro 3(sam)-ga' }, { ko:'을지로4가', en:'Euljiro 4(sa)-ga' },
+    { ko:'동대문역사문화공원', en:'DDP' }, { ko:'신당', en:'Sindang' },
+    { ko:'상왕십리', en:'Sangwangsimni' }, { ko:'왕십리', en:'Wangsimni' },
+    { ko:'한양대', en:'Hanyang Univ.' }, { ko:'뚝섬', en:'Ttukseom' },
+    { ko:'성수', en:'Seongsu' }, { ko:'건대입구', en:'Konkuk Univ.' },
+    { ko:'구의', en:'Guui' }, { ko:'강변', en:'Gangbyeon' },
+    { ko:'잠실나루', en:'Jamsillaru' }, { ko:'잠실', en:'Jamsil' },
+    { ko:'잠실새내', en:'Jamsilsaenae' }, { ko:'종합운동장', en:'Sports Complex' },
+    { ko:'삼성', en:'Samseong' }, { ko:'선릉', en:'Seolleung' },
+    { ko:'역삼', en:'Yeoksam' }, { ko:'강남', en:'Gangnam' },
+    { ko:'교대', en:'Gyodae' }, { ko:'서초', en:'Seocho' },
+    { ko:'방배', en:'Bangbae' }, { ko:'사당', en:'Sadang' },
+    { ko:'낙성대', en:'Nakseongdae' }, { ko:'서울대입구', en:'Seoul Nat\'l Univ.' },
+    { ko:'봉천', en:'Bongcheon' }, { ko:'신림', en:'Sillim' },
+    { ko:'신대방', en:'Sindaebang' }, { ko:'구로디지털단지', en:'Guro Digital Complex' },
+    { ko:'대림', en:'Daerim' }, { ko:'신도림', en:'Sindorim' },
+    { ko:'문래', en:'Mullae' }, { ko:'영등포구청', en:'Yeongdeungpo-gu Office' },
+    { ko:'당산', en:'Dangsan' }, { ko:'합정', en:'Hapjeong' },
+    { ko:'홍대입구', en:'Hongik Univ.' }, { ko:'신촌', en:'Sinchon' },
+    { ko:'이대', en:'Ewha Womans Univ.' }, { ko:'아현', en:'Ahyeon' },
+    { ko:'충정로', en:'Chungjeongno' }
+  ],
+  1: [
+    { ko:'소요산', en:'Soyosan' }, { ko:'동두천', en:'Dongducheon' },
+    { ko:'보산', en:'Bosan' }, { ko:'동두천중앙', en:'Dongducheon Junggang' },
+    { ko:'지행', en:'Jihaeng' }, { ko:'덕정', en:'Deokjeong' },
+    { ko:'덕계', en:'Deokgye' }, { ko:'양주', en:'Yangju' },
+    { ko:'녹양', en:'Nogyang' }, { ko:'가능', en:'Ganeung' },
+    { ko:'의정부', en:'Uijeongbu' }, { ko:'회룡', en:'Hoeryong' },
+    { ko:'망월사', en:'Mangwolsa' }, { ko:'도봉산', en:'Dobongsan' },
+    { ko:'도봉', en:'Dobong' }, { ko:'방학', en:'Banghak' },
+    { ko:'창동', en:'Changdong' }, { ko:'쌍문', en:'Ssangmun' },
+    { ko:'수유', en:'Suyu' }, { ko:'미아', en:'Mia' },
+    { ko:'미아사거리', en:'Mia Sageori' }, { ko:'길음', en:'Gireum' },
+    { ko:'성신여대입구', en:'Sungshin Women\'s Univ.' }, { ko:'한성대입구', en:'Hansung Univ.' },
+    { ko:'혜화', en:'Hyehwa' }, { ko:'동대문', en:'Dongdaemun' },
+    { ko:'동묘앞', en:'Dongmyo' }, { ko:'신설동', en:'Sinseol-dong' },
+    { ko:'제기동', en:'Jegi-dong' }, { ko:'청량리', en:'Cheongnyangni' }
+  ],
+  9: [
+    { ko:'개화', en:'Gaehwa' }, { ko:'김포공항', en:'Gimpo Int\'l Airport' },
+    { ko:'공항시장', en:'Airport Market' }, { ko:'신방화', en:'Sinbanghwa' },
+    { ko:'마곡나루', en:'Magok Naru' }, { ko:'양천향교', en:'Yangcheon Hyanggyo' },
+    { ko:'가양', en:'Gayang' }, { ko:'증미', en:'Jeungmi' },
+    { ko:'등촌', en:'Deungchon' }, { ko:'염창', en:'Yeomchang' },
+    { ko:'신목동', en:'Sinmokdong' }, { ko:'선유도', en:'Seonyudo' },
+    { ko:'당산', en:'Dangsan' }, { ko:'국회의사당', en:'National Assembly' },
+    { ko:'여의도', en:'Yeouido' }, { ko:'샛강', en:'Saetgang' },
+    { ko:'노량진', en:'Noryangjin' }, { ko:'노들', en:'Nodeul' },
+    { ko:'흑석', en:'Heukseok' }, { ko:'동작', en:'Dongjak' },
+    { ko:'구반포', en:'Gubanpo' }, { ko:'신반포', en:'Sinbanpo' },
+    { ko:'고속터미널', en:'Express Bus Terminal' }, { ko:'사평', en:'Sapyeong' },
+    { ko:'신논현', en:'Sinnonhyeon' }, { ko:'언주', en:'Eonju' },
+    { ko:'선정릉', en:'Seonjeongneung' }, { ko:'삼성중앙', en:'Samseong Jungang' },
+    { ko:'봉은사', en:'Bongeunsa' }, { ko:'종합운동장', en:'Sports Complex' },
+    { ko:'삼전', en:'Samjeon' }, { ko:'석촌고분', en:'Seokchon Gobun' },
+    { ko:'석촌', en:'Seokchon' }, { ko:'송파나루', en:'Songpa Naru' },
+    { ko:'한성백제', en:'Hanseong Baekje' }, { ko:'올림픽공원', en:'Olympic Park' },
+    { ko:'둔촌오륜', en:'Dunchon Oryun' }, { ko:'중앙보훈병원', en:'VA Hospital' }
+  ]
+};
+
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let totalSec   = 25 * 60;
+let elapsed    = 0;
+let running    = false;
+let countUp    = false;
+let soundOn    = true;
+let interval   = null;
+let sceneT     = 0;       // animation frame counter
+let stationIdx = 0;
+let startIdx   = 0;
+let stations   = LINES[2];
+let charGender = 'f';
+let stationTimer = 0;   // seconds since last station change
+const STATION_INTERVAL = 120; // 2 min
+
+// ══════════════════════════════════════════
+//  DOM REFS
+// ══════════════════════════════════════════
+const sceneCanvas = document.getElementById('scene-canvas');
+const ctx = sceneCanvas.getContext('2d');
+const charCanvas = document.getElementById('char-canvas');
+const cctx = charCanvas.getContext('2d');
+const clockEl = document.getElementById('clock-display');
+const stationEl = document.getElementById('station-display');
+const railProgress = document.getElementById('rail-progress');
+const trainIcon = document.getElementById('train-icon');
+
+// ══════════════════════════════════════════
+//  INIT CANVAS SIZE
+// ══════════════════════════════════════════
+function resizeCanvas() {
+  const wrap = document.getElementById('window-wrap');
+  sceneCanvas.width = wrap.offsetWidth;
+  sceneCanvas.height = wrap.offsetHeight;
+  charCanvas.height = 80;
+  charCanvas.width = 48;
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); });
+
+// ══════════════════════════════════════════
+//  PIXEL DRAW HELPERS
+// ══════════════════════════════════════════
+function px(c, x, y, w, h, color) {
+  c.fillStyle = color;
+  c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+const S = 3; // global pixel scale
+
+// ══════════════════════════════════════════
+//  SCENE RENDERING
+// ══════════════════════════════════════════
+function drawScene() {
+  const W = sceneCanvas.width, H = sceneCanvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const t = sceneT;
+  const scroll = (t * 1.5) % W; // parallax scroll
+
+  // ── SKY ──
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.55);
+  skyGrad.addColorStop(0, '#6ab0d8');
+  skyGrad.addColorStop(1, '#c8e8f5');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, H * 0.55);
+
+  // ── SUN ──
+  px(ctx, W * 0.78, H * 0.06, S*6, S*6, '#ffe066');
+  px(ctx, W * 0.78 - S, H * 0.06 + S, S*8, S*4, '#ffe066');
+
+  // ── DISTANT MOUNTAINS / HILLS ──
+  drawMountains(W, H, scroll * 0.15);
+
+  // ── HANGANG RIVER ──
+  drawRiver(W, H, scroll);
+
+  // ── BUILDINGS (parallax layers) ──
+  drawBuildings(W, H, scroll * 0.4, 1);
+  drawBuildings(W, H, scroll * 0.7, 0);
+
+  // ── NAMSAN TOWER (fixed position, far bg) ──
+  drawNamsanTower(W, H);
+
+  // ── GROUND / TRACK ──
+  px(ctx, 0, H * 0.78, W, H * 0.22, '#4a3d2a');
+  px(ctx, 0, H * 0.78, W, S, '#5d5040');
+  // track ties scrolling
+  for (let i = 0; i < 20; i++) {
+    const tx = ((i * 60 - scroll * 1.5) % (W + 60) + W + 60) % (W + 60) - 30;
+    px(ctx, tx, H * 0.79, S*5, S*2, '#2a2015');
+  }
+  // rails
+  px(ctx, 0, H * 0.79 + S*2, W, S, '#a09080');
+  px(ctx, 0, H * 0.80 + S*3, W, S, '#a09080');
+
+  // ── CAR INTERIOR FRAME (overlay illusion) ──
+  drawInteriorFrame(W, H);
+}
+
+function drawMountains(W, H, off) {
+  const peaks = [
+    { x: 0.1, y: 0.28, w: 0.22, col: '#7aaa6a' },
+    { x: 0.3, y: 0.25, w: 0.18, col: '#68955a' },
+    { x: 0.55, y: 0.30, w: 0.20, col: '#82b870' },
+    { x: 0.72, y: 0.27, w: 0.24, col: '#5d8a4e' },
+  ];
+  for (const p of peaks) {
+    const bx = ((p.x * W - off) % (W * 1.2) + W * 1.2) % (W * 1.2) - W * 0.1;
+    ctx.fillStyle = p.col;
+    ctx.beginPath();
+    ctx.moveTo(bx, H * 0.55);
+    ctx.lineTo(bx + p.w * W / 2, H * p.y);
+    ctx.lineTo(bx + p.w * W, H * 0.55);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawRiver(W, H, off) {
+  // river base
+  px(ctx, 0, H * 0.52, W, H * 0.07, '#4a7fa5');
+  px(ctx, 0, H * 0.52, W, S, '#6aafd4');
+  // shimmer lines
+  for (let i = 0; i < 6; i++) {
+    const rx = ((i * 130 - off * 0.5) % (W + 130) + W + 130) % (W + 130) - 65;
+    px(ctx, rx, H * 0.535, S * 12, S, 'rgba(255,255,255,0.35)');
+  }
+  // bridge
+  const bx = ((W * 0.4 - off * 0.3) % (W * 1.5) + W * 1.5) % (W * 1.5) - W * 0.2;
+  // piers
+  for (let i = 0; i < 5; i++) {
+    px(ctx, bx + i * S * 14, H * 0.52, S * 3, H * 0.07, '#8a8070');
+  }
+  // deck
+  px(ctx, bx - S, H * 0.53, S * 3 + S * 14 * 4 + S * 3, S * 2, '#a09078');
+}
+
+function drawBuildings(W, H, off, fg) {
+  const buildings = fg
+    ? [
+        { x: 0.04, w: 0.07, h: 0.22, col: '#8b9ea8', win: '#c8e0f0' },
+        { x: 0.13, w: 0.05, h: 0.28, col: '#7a8f98', win: '#d4ecff' },
+        { x: 0.20, w: 0.08, h: 0.18, col: '#9aabb2', win: '#b8d8e8' },
+        { x: 0.32, w: 0.06, h: 0.32, col: '#6a8090', win: '#c0dcf0' },
+        { x: 0.42, w: 0.09, h: 0.20, col: '#8898a0', win: '#c8e4f4' },
+        { x: 0.55, w: 0.05, h: 0.26, col: '#7a8d94', win: '#d0e8ff' },
+        { x: 0.63, w: 0.07, h: 0.15, col: '#98a8b0', win: '#c0dcee' },
+        { x: 0.73, w: 0.06, h: 0.30, col: '#708090', win: '#c4e0f4' },
+        { x: 0.82, w: 0.08, h: 0.22, col: '#8a9da6', win: '#cce4f8' },
+        { x: 0.92, w: 0.06, h: 0.19, col: '#7a8c94', win: '#c8e2f2' },
+      ]
+    : [
+        { x: 0.08, w: 0.05, h: 0.16, col: '#b0c0c8', win: '#e0f0ff' },
+        { x: 0.26, w: 0.04, h: 0.20, col: '#a8b8c0', win: '#d8ecff' },
+        { x: 0.47, w: 0.06, h: 0.14, col: '#b8c8d0', win: '#e8f4ff' },
+        { x: 0.68, w: 0.05, h: 0.18, col: '#a0b0b8', win: '#d0eaff' },
+        { x: 0.85, w: 0.07, h: 0.22, col: '#b0c2ca', win: '#dcf0ff' },
+      ];
+
+  for (const b of buildings) {
+    const bx = ((b.x * W - off) % (W * 1.3) + W * 1.3) % (W * 1.3) - W * 0.15;
+    const by = H * 0.55 - b.h * H;
+    const bw = b.w * W;
+    const bh = b.h * H;
+    px(ctx, bx, by, bw, bh, b.col);
+    // dark side
+    px(ctx, bx + bw - S * 3, by, S * 3, bh, 'rgba(0,0,0,0.18)');
+    // windows grid
+    for (let wy = by + S * 2; wy < by + bh - S * 4; wy += S * 5) {
+      for (let wx = bx + S * 2; wx < bx + bw - S * 4; wx += S * 7) {
+        const lit = Math.random() > 0.35;
+        px(ctx, wx, wy, S * 3, S * 3, lit ? b.win : 'rgba(0,0,0,0.15)');
+      }
+    }
+  }
+}
+
+function drawNamsanTower(W, H) {
+  // Namsan N Seoul Tower silhouette (far right, fixed)
+  const tx = W * 0.87, ty = H * 0.18;
+  px(ctx, tx - S, ty + S*8, S*2, S*20, '#6a7580');       // shaft
+  px(ctx, tx - S*3, ty + S*3, S*6, S*8, '#7a8590');     // observation
+  px(ctx, tx - S, ty, S*2, S*4, '#9aa0a8');             // antenna
+  px(ctx, tx - S*4, ty + S*11, S*8, S*2, '#7a8590');   // deck ring
+}
+
+function drawInteriorFrame(W, H) {
+  // thick dark frame = car wall around the window view
+  const fw = S * 10; // frame width
+  ctx.fillStyle = '#2e1f12';
+  ctx.fillRect(0, 0, fw, H);           // left
+  ctx.fillRect(W - fw, 0, fw, H);      // right
+  ctx.fillRect(0, 0, W, fw * 0.6);    // top
+  ctx.fillRect(0, H - fw * 0.6, W, fw * 0.6); // bottom
+  // window sill
+  ctx.fillStyle = '#4a3018';
+  ctx.fillRect(0, H - fw, W, fw * 0.4);
+  // metal handrails at top
+  ctx.fillStyle = '#8a9070';
+  ctx.fillRect(fw, fw * 0.2, W - fw * 2, S);
+  ctx.fillRect(fw, fw * 0.35, W - fw * 2, S);
+  // seat cushions at bottom (left/right corners peeking in)
+  ctx.fillStyle = '#c47c2b';
+  ctx.fillRect(fw, H - fw * 0.6, S * 20, fw * 0.5);
+  ctx.fillRect(W - fw - S * 20, H - fw * 0.6, S * 20, fw * 0.5);
+}
+
+// ══════════════════════════════════════════
+//  CHARACTER SPRITES (pixel art, 16x16 grid)
+// ══════════════════════════════════════════
+function drawCharacter(gender) {
+  const c = cctx;
+  c.clearRect(0, 0, 48, 80);
+  const p = 3; // pixel size
+
+  // female Stardew-ish sprite
+  const SKIN = '#f5c896', HAIR = '#4a2c0a', SHIRT = '#6b8fbf', PANTS = '#3d5a3e', SHOES = '#2a1a0a';
+  const hairCol = gender === 'f' ? '#8b4513' : '#3d2310';
+  const shirtCol = gender === 'f' ? '#7a9fd4' : '#5a7a5a';
+
+  // hair
+  px(c, 12, 0, 24, p*3, hairCol);
+  px(c, 9, p, 30, p*2, hairCol);
+  if (gender === 'f') {
+    px(c, 9, p*4, p*2, p*8, hairCol); // long hair left
+    px(c, 37, p*4, p*2, p*8, hairCol);
+  }
+  // head
+  px(c, 12, p, 24, p*5, SKIN);
+  // eyes
+  px(c, 15, p*3, p, p, '#2a1a10');
+  px(c, 30, p*3, p, p, '#2a1a10');
+  // mouth
+  px(c, 21, p*5, p*2, p, '#c87050');
+  // body / shirt
+  px(c, 12, p*6, 24, p*6, shirtCol);
+  px(c, 9, p*7, p*3, p*5, shirtCol);
+  px(c, 36, p*7, p*3, p*5, shirtCol);
+  // hands
+  px(c, 9, p*11, p*3, p*2, SKIN);
+  px(c, 36, p*11, p*3, p*2, SKIN);
+  // pants
+  px(c, 12, p*12, 24, p*6, '#4a6b4e');
+  // shoes
+  px(c, 12, p*17, p*9, p*2, '#2a1a0a');
+  px(c, 24, p*17, p*9, p*2, '#2a1a0a');
+}
+
+// ══════════════════════════════════════════
+//  CLOCK DISPLAY
+// ══════════════════════════════════════════
+function formatTime(sec) {
+  const m = String(Math.floor(Math.abs(sec) / 60)).padStart(2, '0');
+  const s = String(Math.abs(sec) % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
+function updateClock() {
+  if (countUp) {
+    clockEl.textContent = formatTime(elapsed);
+  } else {
+    clockEl.textContent = formatTime(totalSec - elapsed);
+  }
+}
+function updateProgress() {
+  const pct = countUp ? 0 : Math.min(elapsed / totalSec * 100, 100);
+  railProgress.style.width = pct + '%';
+  trainIcon.style.left = pct + '%';
+}
+function updateStation() {
+  const s = stations[stationIdx];
+  stationEl.textContent = `🚇 ${s.ko} (${s.en})`;
+}
+
+// ══════════════════════════════════════════
+//  AUDIO (Web Audio synth)
+// ══════════════════════════════════════════
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playJingle() {
+  if (!soundOn) return;
+  const ac = getAudio();
+  const notes = [523, 659, 784, 659, 523];
+  let t = ac.currentTime;
+  notes.forEach(freq => {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.15, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.start(t); osc.stop(t + 0.22);
+    t += 0.18;
+  });
+}
+function playAlert() {
+  if (!soundOn) return;
+  const ac = getAudio();
+  const notes = [880, 1108, 1320, 1108, 880, 1320];
+  let t = ac.currentTime;
+  notes.forEach(freq => {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.connect(gain); gain.connect(ac.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(freq, t);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    osc.start(t); osc.stop(t + 0.18);
+    t += 0.15;
+  });
+}
+
+// ══════════════════════════════════════════
+//  TIMER LOGIC
+// ══════════════════════════════════════════
+function tick() {
+  elapsed++;
+  stationTimer++;
+  updateClock();
+  updateProgress();
+
+  if (stationTimer >= STATION_INTERVAL) {
+    stationTimer = 0;
+    stationIdx = (stationIdx + 1) % stations.length;
+    updateStation();
+    playJingle();
+  }
+
+  if (!countUp && elapsed >= totalSec) {
+    clearInterval(interval);
+    running = false;
+    playAlert();
+    stationEl.classList.add('flash');
+  }
+}
+
+function startTimer() {
+  if (running) return;
+  running = true;
+  stationEl.classList.remove('flash');
+  interval = setInterval(tick, 1000);
+}
+function pauseTimer() {
+  clearInterval(interval);
+  running = false;
+}
+function resetTimer() {
+  pauseTimer();
+  elapsed = 0;
+  stationTimer = 0;
+  stationIdx = startIdx;
+  stationEl.classList.remove('flash');
+  updateClock();
+  updateProgress();
+  updateStation();
+}
+
+// ══════════════════════════════════════════
+//  RENDER LOOP
+// ══════════════════════════════════════════
+function renderLoop() {
+  if (running) sceneT++;
+  drawScene();
+  drawCharacter(charGender);
+  requestAnimationFrame(renderLoop);
+}
+
+// ══════════════════════════════════════════
+//  STATION SELECT POPULATE
+// ══════════════════════════════════════════
+function populateStations(line) {
+  stations = LINES[line];
+  const sel = document.getElementById('station-sel');
+  sel.innerHTML = '';
+  stations.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${s.ko}`;
+    sel.appendChild(opt);
+  });
+  stationIdx = 0; startIdx = 0;
+  updateStation();
+}
+
+// ══════════════════════════════════════════
+//  EVENT LISTENERS
+// ══════════════════════════════════════════
+document.getElementById('start-btn').onclick = startTimer;
+document.getElementById('pause-btn').onclick = pauseTimer;
+document.getElementById('reset-btn').onclick = resetTimer;
+
+document.getElementById('sound-btn').onclick = function() {
+  soundOn = !soundOn;
+  this.textContent = soundOn ? '🔊' : '🔇';
+  this.classList.toggle('on', soundOn);
+};
+
+document.getElementById('line-sel').onchange = function() {
+  populateStations(parseInt(this.value));
+  resetTimer();
+};
+
+document.getElementById('station-sel').onchange = function() {
+  startIdx = parseInt(this.value);
+  stationIdx = startIdx;
+  updateStation();
+};
+
+document.getElementById('mode-time').onchange = function() {
+  const v = parseInt(this.value);
+  countUp = v === 0;
+  totalSec = countUp ? 99999 : v * 60;
+  resetTimer();
+};
+
+document.getElementById('char-sel').onchange = function() {
+  charGender = this.value;
+};
+
+document.getElementById('btn-pomo').onclick = function() {
+  countUp = false;
+  totalSec = parseInt(document.getElementById('mode-time').value) * 60 || 25 * 60;
+  this.classList.add('sel');
+  document.getElementById('btn-up').classList.remove('sel');
+  resetTimer();
+};
+document.getElementById('btn-up').onclick = function() {
+  countUp = true;
+  this.classList.add('sel');
+  document.getElementById('btn-pomo').classList.remove('sel');
+  resetTimer();
+};
+
+document.getElementById('shop-btn').onclick = () => document.getElementById('modal-overlay').classList.add('open');
+document.getElementById('modal-close-btn').onclick = () => document.getElementById('modal-overlay').classList.remove('open');
+document.getElementById('modal-overlay').onclick = function(e) {
+  if (e.target === this) this.classList.remove('open');
+};
+
+// ══════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════
+populateStations(2);
+updateClock();
+updateProgress();
+renderLoop();
+</script>
 </body>
 </html>
